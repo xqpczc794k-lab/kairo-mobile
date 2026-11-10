@@ -12,7 +12,7 @@ export default function AppTabs() {
       backgroundColor={colors.background}
       indicatorColor={colors.backgroundElement}
       labelStyle={{ selected: { color: colors.text } }}>
-      <NativeTabs.Trigger name="index">
+      <NativeTabs.Trigger name="talk">
         <NativeTabs.Trigger.Label>Talk</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="message.fill" md="chat" />
       </NativeTabs.Trigger>

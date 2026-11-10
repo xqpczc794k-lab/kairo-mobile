@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import type { Href } from 'expo-router';
 
 import { supabase } from '../../../supabase';
 
@@ -36,7 +37,7 @@ export default function LoginScreen() {
       Alert.alert('Success', 'Check your email for the confirmation link.');
     } else {
       // Session set; Stack.Protected will show the tabs. Navigate explicitly too.
-      router.replace('/');
+      router.replace('/talk' as Href);
     }
     setLoading(false);
   };
