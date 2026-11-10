@@ -21,11 +21,23 @@ export default function AppTabs() {
       <TabSlot style={{ height: '100%' }} />
       <TabList asChild>
         <CustomTabList>
-          <TabTrigger name="home" href="/" asChild>
-            <TabButton>Home</TabButton>
+          <TabTrigger name="index" href="/" asChild>
+            <TabButton>Talk</TabButton>
           </TabTrigger>
-          <TabTrigger name="explore" href="/explore" asChild>
-            <TabButton>Explore</TabButton>
+          <TabTrigger name="senses" href="/senses" asChild>
+            <TabButton>Senses</TabButton>
+          </TabTrigger>
+          <TabTrigger name="build" href="/build" asChild>
+            <TabButton>Build</TabButton>
+          </TabTrigger>
+          <TabTrigger name="notes" href="/notes" asChild>
+            <TabButton>Notes</TabButton>
+          </TabTrigger>
+          <TabTrigger name="library" href="/library" asChild>
+            <TabButton>Library</TabButton>
+          </TabTrigger>
+          <TabTrigger name="knowledge" href="/knowledge" asChild>
+            <TabButton>Knowledge</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>
@@ -33,7 +45,7 @@ export default function AppTabs() {
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+export function TabButton({ children, isFocused, ref: _ref, ...props }: TabTriggerSlotProps) {
   return (
     <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
       <ThemedView
@@ -55,7 +67,7 @@ export function CustomTabList(props: TabListProps) {
     <View {...props} style={styles.tabListContainer}>
       <ThemedView type="backgroundElement" style={styles.innerContainer}>
         <ThemedText type="smallBold" style={styles.brandText}>
-          Expo Starter
+          Kairo
         </ThemedText>
 
         {props.children}
