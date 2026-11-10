@@ -43,3 +43,4 @@ example
 /android
 
 src/app/index.tsx.bak
+*.bak.*
