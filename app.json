@@ -46,6 +46,16 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "owner": "akshit_kairo_neural"
+    "owner": "akshit_kairo_neural",
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "bc31c6ad-e4a2-43dc-b072-f19781911df7"
+      }
+    }
   }
 }
