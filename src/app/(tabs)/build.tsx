@@ -31,6 +31,7 @@ export default function BuildScreen() {
   const [stage, setStage] = useState<Stage>(0);
   const [result, setResult] = useState<DispatchResult>({ status: 'idle' });
   const [busy, setBusy] = useState(false);
+  const [isFixingError, setIsFixingError] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -48,14 +49,14 @@ export default function BuildScreen() {
     return session.access_token;
   };
 
-  const submitCanonical = async (prompt: string) => {
+  const submitCanonical = async (prompt: string, forceNoMerge = false) => {
     setBusy(true); setStage(1); setResult({ status: 'processing' });
     try {
       const jwt = await getJwt();
       const res = await fetch(`${BASE_URL}/api/talk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
-        body: JSON.stringify({ message: prompt, context: {} }),
+        body: JSON.stringify({ message: prompt, context: {}, no_merge: forceNoMerge }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Dispatch failed');
@@ -179,7 +180,7 @@ export default function BuildScreen() {
     const hint = mode === 'self_heal'
       ? `Self-heal request: ${demand.trim()}\n\nUse list_kairo_repo_files to identify the relevant file, then call trigger_canonical_dispatch.`
       : `Feature request: ${demand.trim()}\n\nUse list_kairo_repo_files to identify the relevant file, then call trigger_canonical_dispatch.`;
-    return submitCanonical(hint);
+    return submitCanonical(hint, isFixingError);
   };
 
   const disabled = busy || (mode === 'external'
@@ -196,7 +197,7 @@ export default function BuildScreen() {
           {(['self_heal', 'external', 'feature'] as Mode[]).map((m) => (
             <TouchableOpacity key={m}
               style={[styles.segment, mode === m && styles.segmentActive]}
-              onPress={() => { if (!busy) { setMode(m); setStage(0); setResult({ status: 'idle' }); } }}>
+              onPress={() => { if (!busy) { setMode(m); setStage(0); setResult({ status: 'idle' }); setIsFixingError(false); } }}>
               <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>
                 {m === 'self_heal' ? 'Self-Heal' : m === 'external' ? 'Fix App' : 'Feature'}
               </Text>
@@ -252,6 +253,19 @@ export default function BuildScreen() {
             {result.prUrl ? (
               <TouchableOpacity style={styles.prButton} onPress={() => Linking.openURL(result.prUrl as string)}>
                 <Text style={styles.prButtonText}>View Pull Request</Text>
+              </TouchableOpacity>
+            ) : null}
+            {result.status === 'error' ? (
+              <TouchableOpacity
+                style={[styles.prButton, { backgroundColor: '#FF9500', marginTop: 8 }]}
+                onPress={() => {
+                  setMode('self_heal');
+                  setDemand(`The previous action failed with this error: ${result.error ?? 'unknown error'}. Please fix the code to prevent this. DO NOT MERGE until the user tests it.`);
+                  setResult({ status: 'idle' });
+                  setStage(0);
+                  setIsFixingError(true);
+                }}>
+                <Text style={[styles.prButtonText, { color: '#FFFFFF' }]}>Send Error to Self-Heal</Text>
               </TouchableOpacity>
             ) : null}
           </View>
