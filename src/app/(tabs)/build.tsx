@@ -1,97 +1,187 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  ActivityIndicator, Linking, ScrollView, StyleSheet, Text,
+  TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
+import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../../supabase';
 
 const BASE_URL = 'https://api.kairomtz.com';
+const PAT_KEY = 'kairo.github_pat';
+
+type Mode = 'self_heal' | 'external' | 'feature';
+type Stage = 0 | 1 | 2 | 3 | 4;
+
+interface DispatchResult {
+  status: 'idle' | 'processing' | 'done' | 'error';
+  error?: string;
+  reply?: string;
+  prUrl?: string;
+}
 
 export default function BuildScreen() {
-  const [targetFile, setTargetFile] = useState('README.md');
+  const [mode, setMode] = useState<Mode>('self_heal');
   const [demand, setDemand] = useState('');
-  const [status, setStatus] = useState<'idle' | 'processing' | 'done' | 'error'>('idle');
-  const [resultText, setResultText] = useState('');
-  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [repo, setRepo] = useState('');
+  const [filePath, setFilePath] = useState('README.md');
+  const [branch, setBranch] = useState('main');
+  const [pat, setPat] = useState('');
+  const [savedPat, setSavedPat] = useState<string | null>(null);
+  const [stage, setStage] = useState<Stage>(0);
+  const [result, setResult] = useState<DispatchResult>({ status: 'idle' });
+  const [busy, setBusy] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const pollStatus = (talkId: string) => {
-    let polls = 0;
-    const interval = setInterval(async () => {
-      polls += 1;
-      if (polls > 60) {
-        // 2 minutes — generous for the README/direct-dispatch demo
-        clearInterval(interval);
-        setStatus('error');
-        setResultText('Build timed out.');
-        return;
-      }
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const res = await fetch(`${BASE_URL}/api/talk-status?id=${encodeURIComponent(talkId)}`, {
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-        });
-        const data = await res.json();
-        if (data.status === 'done') {
-          clearInterval(interval);
-          setStatus('done');
-          setResultText(data.reply ?? '');
-          const urlMatch = typeof data.reply === 'string' ? data.reply.match(/https:\/\/github\.com\/[^\s)]+/) : null;
-          if (urlMatch) setPrUrl(urlMatch[0]);
-        } else if (data.status === 'error') {
-          clearInterval(interval);
-          setStatus('error');
-          setResultText(data.error ?? 'unknown error');
-        }
-      } catch {
-        // transient — keep polling
-      }
-    }, 2000);
+  useEffect(() => {
+    (async () => {
+      try { const s = await SecureStore.getItemAsync(PAT_KEY); if (s) setSavedPat(s); } catch {}
+    })();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  const stopPoll = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+
+  const getJwt = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No active session');
+    return session.access_token;
   };
 
-  const handleDispatch = async () => {
-    if (!targetFile.trim() || !demand.trim()) return;
-
-    setStatus('processing');
-    setResultText('');
-    setPrUrl(null);
-
+  const submitCanonical = async (prompt: string) => {
+    setBusy(true); setStage(1); setResult({ status: 'processing' });
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) throw new Error('No active session');
-
-      const prompt = `Dispatch a canonical demand to ${targetFile.trim()} with the following instruction: ${demand.trim()}`;
-
+      const jwt = await getJwt();
       const res = await fetch(`${BASE_URL}/api/talk`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
         body: JSON.stringify({ message: prompt, context: {} }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to dispatch');
-      if (!data.talk_id) throw new Error('no talk_id returned');
-      pollStatus(data.talk_id);
+      if (!res.ok) throw new Error(data.error || 'Dispatch failed');
+      if (!data.talk_id) throw new Error('No talk_id returned');
+      pollCanonical(String(data.talk_id));
     } catch (err) {
-      setStatus('error');
-      setResultText(err instanceof Error ? err.message : 'dispatch failed');
+      setBusy(false);
+      setResult({ status: 'error', error: err instanceof Error ? err.message : String(err) });
     }
   };
 
-  const disabled = !targetFile.trim() || !demand.trim() || status === 'processing';
+  const pollCanonical = (talkId: string) => {
+    let polls = 0; stopPoll();
+    pollRef.current = setInterval(async () => {
+      polls += 1;
+      if (polls > 150) { stopPoll(); setBusy(false); setResult({ status: 'error', error: 'Build timed out.' }); return; }
+      try {
+        const jwt = await getJwt();
+        const res = await fetch(`${BASE_URL}/api/talk-status?id=${encodeURIComponent(talkId)}`, {
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.demand_id) { pollRegister(String(data.demand_id)); return; }
+        if (data.status === 'done') {
+          stopPoll(); setBusy(false);
+          const reply = String(data.reply ?? '');
+          const m = reply.match(/https:\/\/github\.com\/[^\s)]+/);
+          setStage(4);
+          setResult({ status: 'done', reply, prUrl: m ? m[0] : undefined });
+        } else if (data.status === 'error') {
+          stopPoll(); setBusy(false);
+          setResult({ status: 'error', error: String(data.error ?? 'unknown error') });
+        }
+      } catch { /* transient */ }
+    }, 2000);
+  };
+
+  const pollRegister = (demandId: string) => {
+    stopPoll();
+    pollRef.current = setInterval(async () => {
+      try {
+        const jwt = await getJwt();
+        const res = await fetch(`${BASE_URL}/api/status?id=${encodeURIComponent(demandId)}`, {
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.merged_at) { stopPoll(); setBusy(false); setStage(4); setResult({ status: 'done', reply: 'Merged and deployed.', prUrl: data.pr_url }); return; }
+        if (data.q3_approved) { setStage(4); setResult({ status: 'processing', prUrl: data.pr_url }); return; }
+        if (data.test_passed) { setStage(3); return; }
+        if (data.q1_success) { setStage(2); return; }
+        setStage(1);
+      } catch { /* transient */ }
+    }, 3000);
+  };
+
+  const submitExternal = async () => {
+    setBusy(true); setStage(1); setResult({ status: 'processing' });
+    try {
+      const jwt = await getJwt();
+      const effectivePat = (pat || savedPat || '').trim();
+      if (!effectivePat) throw new Error('GitHub PAT required');
+      if (!repo.trim() || !filePath.trim() || !demand.trim()) throw new Error('repo, file_path, and demand are required');
+      try { await SecureStore.setItemAsync(PAT_KEY, effectivePat); setSavedPat(effectivePat); setPat(''); } catch {}
+      const res = await fetch(`${BASE_URL}/external-dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({
+          repo: repo.trim(),
+          file_path: filePath.trim(),
+          base_branch: branch.trim() || undefined,
+          demand: demand.trim(),
+          pat: effectivePat,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'External dispatch failed');
+      if (!data.dispatch_id) throw new Error('No dispatch_id returned');
+      pollExternal(String(data.dispatch_id));
+    } catch (err) {
+      setBusy(false);
+      setResult({ status: 'error', error: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  const pollExternal = (dispatchId: string) => {
+    let polls = 0; stopPoll();
+    pollRef.current = setInterval(async () => {
+      polls += 1;
+      if (polls > 150) { stopPoll(); setBusy(false); setResult({ status: 'error', error: 'External dispatch timed out.' }); return; }
+      try {
+        const jwt = await getJwt();
+        const res = await fetch(`${BASE_URL}/api/external-status?id=${encodeURIComponent(dispatchId)}`, {
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const st = String(data.status ?? '');
+        const r: { ok?: boolean; pr_url?: string; test_gate?: boolean; error?: string } =
+          (data.result && typeof data.result === 'object') ? data.result : {};
+        if (r.test_gate) setStage(2);
+        if (r.pr_url) setStage(3);
+        if (st === 'done') {
+          stopPoll(); setBusy(false); setStage(4);
+          setResult({ status: 'done', reply: r.ok ? 'Merged.' : 'Completed.', prUrl: r.pr_url });
+        } else if (st === 'error') {
+          stopPoll(); setBusy(false);
+          setResult({ status: 'error', error: String(r.error || 'external dispatch error') });
+        }
+      } catch { /* transient */ }
+    }, 3000);
+  };
+
+  const handleSubmit = () => {
+    if (busy) return;
+    if (mode === 'external') return submitExternal();
+    const hint = mode === 'self_heal'
+      ? `Self-heal request: ${demand.trim()}\n\nUse list_kairo_repo_files to identify the relevant file, then call trigger_canonical_dispatch.`
+      : `Feature request: ${demand.trim()}\n\nUse list_kairo_repo_files to identify the relevant file, then call trigger_canonical_dispatch.`;
+    return submitCanonical(hint);
+  };
+
+  const disabled = busy || (mode === 'external'
+    ? !repo.trim() || !filePath.trim() || !demand.trim() || (!pat.trim() && !savedPat)
+    : !demand.trim());
 
   return (
     <SafeAreaView style={styles.container}>
@@ -99,53 +189,68 @@ export default function BuildScreen() {
         <Text style={styles.header}>Build</Text>
         <Text style={styles.subtitle}>Trigger autonomous code changes.</Text>
 
-        <Text style={styles.label}>Target File</Text>
-        <TextInput
-          style={styles.input}
-          value={targetFile}
-          onChangeText={setTargetFile}
-          placeholder="e.g., README.md"
-          placeholderTextColor="#888888"
-          autoCapitalize="none"
-        />
+        <View style={styles.segmentRow}>
+          {(['self_heal', 'external', 'feature'] as Mode[]).map((m) => (
+            <TouchableOpacity key={m}
+              style={[styles.segment, mode === m && styles.segmentActive]}
+              onPress={() => { if (!busy) { setMode(m); setStage(0); setResult({ status: 'idle' }); } }}>
+              <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>
+                {m === 'self_heal' ? 'Self-Heal' : m === 'external' ? 'Fix App' : 'Feature'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-        <Text style={styles.label}>Demand / Instruction</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={demand}
-          onChangeText={setDemand}
-          placeholder="Describe the fix or feature..."
-          placeholderTextColor="#888888"
-          multiline
-        />
+        {mode === 'external' && (
+          <>
+            <Text style={styles.label}>Repo URL</Text>
+            <TextInput style={styles.input} value={repo} onChangeText={setRepo}
+              placeholder="https://github.com/owner/repo" placeholderTextColor="#888"
+              autoCapitalize="none" autoCorrect={false} />
+            <Text style={styles.label}>File Path</Text>
+            <TextInput style={styles.input} value={filePath} onChangeText={setFilePath}
+              placeholder="e.g., README.md" placeholderTextColor="#888"
+              autoCapitalize="none" autoCorrect={false} />
+            <Text style={styles.label}>Branch</Text>
+            <TextInput style={styles.input} value={branch} onChangeText={setBranch}
+              placeholder="main" placeholderTextColor="#888"
+              autoCapitalize="none" autoCorrect={false} />
+            <Text style={styles.label}>GitHub PAT {savedPat ? '(saved — leave blank to reuse)' : ''}</Text>
+            <TextInput style={styles.input} value={pat} onChangeText={setPat}
+              placeholder={savedPat ? '••••••••  saved' : 'ghp_...'}
+              placeholderTextColor="#888" autoCapitalize="none" autoCorrect={false}
+              secureTextEntry />
+          </>
+        )}
 
-        <TouchableOpacity
-          style={[styles.button, disabled && styles.buttonDisabled]}
-          onPress={handleDispatch}
-          disabled={disabled}>
-          {status === 'processing' ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.buttonText}>Dispatch to Engine</Text>
-          )}
+        <Text style={styles.label}>
+          {mode === 'self_heal' ? "What's bothering you?"
+            : mode === 'feature' ? 'What feature do you want?'
+            : 'What should be fixed?'}
+        </Text>
+        <TextInput style={[styles.input, styles.textArea]} value={demand} onChangeText={setDemand}
+          placeholder={mode === 'self_heal' ? 'Describe the bug or issue...' : 'Describe the request...'}
+          placeholderTextColor="#888" multiline />
+
+        <TouchableOpacity style={[styles.button, disabled && styles.buttonDisabled]}
+          onPress={handleSubmit} disabled={disabled}>
+          {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Dispatch to Engine</Text>}
         </TouchableOpacity>
 
-        {status !== 'idle' && (
+        {stage > 0 && <StagesTracker stage={stage} />}
+
+        {result.status !== 'idle' && (
           <View style={styles.resultCard}>
             <Text style={styles.resultTitle}>
-              {status === 'processing'
-                ? 'Dispatching…'
-                : status === 'done'
-                  ? 'Build Complete'
-                  : 'Build Failed'}
+              {result.status === 'processing' ? 'Working…' : result.status === 'done' ? 'Complete' : 'Failed'}
             </Text>
-            <Text style={styles.resultText}>{resultText}</Text>
-
-            {prUrl && (
-              <TouchableOpacity style={styles.prButton} onPress={() => Linking.openURL(prUrl)}>
+            {result.error ? <Text style={styles.resultText}>{result.error}</Text> : null}
+            {result.reply ? <Text style={styles.resultText}>{result.reply}</Text> : null}
+            {result.prUrl ? (
+              <TouchableOpacity style={styles.prButton} onPress={() => Linking.openURL(result.prUrl as string)}>
                 <Text style={styles.prButtonText}>View Pull Request</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
         )}
       </ScrollView>
@@ -153,46 +258,56 @@ export default function BuildScreen() {
   );
 }
 
+function StagesTracker({ stage }: { stage: Stage }) {
+  const items = [
+    { id: 1, icon: '⏳', label: 'Q1: Editing code (LLM working)…' },
+    { id: 2, icon: '🧪', label: 'Q2: Running tests in sandbox…' },
+    { id: 3, icon: '👤', label: 'Q3: Pending human review (PR opened)…' },
+    { id: 4, icon: '✅', label: 'Q4: Merged and deployed.' },
+  ];
+  return (
+    <View style={styles.stagesCard}>
+      {items.map((it) => {
+        const isActive = stage === it.id;
+        const isDone = stage > it.id;
+        return (
+          <View key={it.id} style={styles.stageRow}>
+            <Text style={[styles.stageIcon, !isActive && !isDone && styles.stageDim]}>{it.icon}</Text>
+            <Text style={[styles.stageLabel, isActive && styles.stageActive, isDone && styles.stageDone]}>{it.label}</Text>
+            {isActive ? <ActivityIndicator size="small" color="#007AFF" /> : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
-  content: { padding: 16 },
+  content: { padding: 16, paddingBottom: 48 },
   header: { fontSize: 32, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 4 },
-  subtitle: { fontSize: 16, color: '#888888', marginBottom: 24 },
+  subtitle: { fontSize: 16, color: '#888888', marginBottom: 16 },
+  segmentRow: { flexDirection: 'row', marginBottom: 20, backgroundColor: '#1C1C1E', borderRadius: 12, padding: 4 },
+  segment: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+  segmentActive: { backgroundColor: '#007AFF' },
+  segmentText: { color: '#A1A1A6', fontSize: 14, fontWeight: '600' },
+  segmentTextActive: { color: '#FFFFFF' },
   label: { color: '#A1A1A6', fontSize: 14, marginBottom: 8, fontWeight: '500' },
-  input: {
-    backgroundColor: '#1C1C1E',
-    color: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    fontSize: 16,
-  },
+  input: { backgroundColor: '#1C1C1E', color: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 16, fontSize: 16 },
   textArea: { minHeight: 100, textAlignVertical: 'top' },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
+  button: { backgroundColor: '#007AFF', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 8 },
   buttonDisabled: { backgroundColor: '#333333' },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
-  resultCard: {
-    marginTop: 24,
-    backgroundColor: '#1C1C1E',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2C2C2E',
-  },
+  stagesCard: { marginTop: 24, backgroundColor: '#1C1C1E', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#2C2C2E' },
+  stageRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  stageIcon: { fontSize: 18, marginRight: 12 },
+  stageDim: { opacity: 0.3 },
+  stageLabel: { color: '#666', fontSize: 14, flex: 1 },
+  stageActive: { color: '#FFFFFF', fontWeight: '600' },
+  stageDone: { color: '#34C759' },
+  resultCard: { marginTop: 16, backgroundColor: '#1C1C1E', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#2C2C2E' },
   resultTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
   resultText: { color: '#A1A1A6', fontSize: 14, lineHeight: 20 },
-  prButton: {
-    marginTop: 16,
-    backgroundColor: '#2C2C2E',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
+  prButton: { marginTop: 16, backgroundColor: '#2C2C2E', padding: 12, borderRadius: 8, alignItems: 'center' },
   prButtonText: { color: '#007AFF', fontWeight: 'bold' },
 });
