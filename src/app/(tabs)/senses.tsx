@@ -134,7 +134,7 @@ export default function SensesScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Senses</Text>
-        <Text style={styles.subtitle}>Kairo&apos;s connection to your digital world.</Text>
+        <Text style={styles.subtitle}>Kairo&apos;s connection to your digital world. (OTA Verified!)</Text>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
