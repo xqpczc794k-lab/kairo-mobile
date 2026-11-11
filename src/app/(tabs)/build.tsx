@@ -96,7 +96,10 @@ export default function BuildScreen() {
 
   const pollRegister = (demandId: string) => {
     stopPoll();
+    let polls = 0;
     pollRef.current = setInterval(async () => {
+      polls += 1;
+      if (polls > 200) { stopPoll(); setBusy(false); setResult({ status: 'error', error: 'Review pending — merge not yet approved. Check the PR.' }); return; }
       try {
         const jwt = await getJwt();
         const res = await fetch(`${BASE_URL}/api/status?id=${encodeURIComponent(demandId)}`, {
