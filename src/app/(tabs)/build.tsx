@@ -14,7 +14,7 @@ type Mode = 'self_heal' | 'external' | 'feature';
 type Stage = 0 | 1 | 2 | 3 | 4;
 
 interface DispatchResult {
-  status: 'idle' | 'processing' | 'done' | 'error';
+  status: 'idle' | 'processing' | 'done' | 'pending_review' | 'error';
   error?: string;
   reply?: string;
   prUrl?: string;
@@ -61,14 +61,14 @@ export default function BuildScreen() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Dispatch failed');
       if (!data.talk_id) throw new Error('No talk_id returned');
-      pollCanonical(String(data.talk_id));
+      pollCanonical(String(data.talk_id), forceNoMerge);
     } catch (err) {
       setBusy(false);
       setResult({ status: 'error', error: err instanceof Error ? err.message : String(err) });
     }
   };
 
-  const pollCanonical = (talkId: string) => {
+  const pollCanonical = (talkId: string, forceNoMerge: boolean) => {
     let polls = 0; stopPoll();
     pollRef.current = setInterval(async () => {
       polls += 1;
@@ -80,7 +80,7 @@ export default function BuildScreen() {
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (data.demand_id) { pollRegister(String(data.demand_id)); return; }
+        if (data.demand_id) { pollRegister(String(data.demand_id), forceNoMerge); return; }
         if (data.status === 'done') {
           stopPoll(); setBusy(false);
           const reply = String(data.reply ?? '');
@@ -95,7 +95,7 @@ export default function BuildScreen() {
     }, 2000);
   };
 
-  const pollRegister = (demandId: string) => {
+  const pollRegister = (demandId: string, forceNoMerge: boolean) => {
     stopPoll();
     let polls = 0;
     pollRef.current = setInterval(async () => {
@@ -109,6 +109,11 @@ export default function BuildScreen() {
         if (!res.ok) return;
         const data = await res.json();
         if (data.merged_at) { stopPoll(); setBusy(false); setStage(4); setResult({ status: 'done', reply: 'Merged and deployed.', prUrl: data.pr_url }); return; }
+        if (forceNoMerge && data.pr_url && !data.merged_at) {
+          stopPoll(); setBusy(false); setStage(3);
+          setResult({ status: 'pending_review', reply: 'PR opened and held for review. Ready to test.', prUrl: data.pr_url });
+          return;
+        }
         if (data.q3_approved) { setStage(4); setResult({ status: 'processing', prUrl: data.pr_url }); return; }
         if (data.test_passed) { setStage(3); return; }
         if (data.q1_success) { setStage(2); return; }
@@ -246,7 +251,10 @@ export default function BuildScreen() {
         {result.status !== 'idle' && (
           <View style={styles.resultCard}>
             <Text style={styles.resultTitle}>
-              {result.status === 'processing' ? 'Working…' : result.status === 'done' ? 'Complete' : 'Failed'}
+              {result.status === 'processing' ? 'Working…'
+                : result.status === 'done' ? 'Complete'
+                : result.status === 'pending_review' ? 'Ready for Review'
+                : 'Failed'}
             </Text>
             {result.error ? <Text style={styles.resultText}>{result.error}</Text> : null}
             {result.reply ? <Text style={styles.resultText}>{result.reply}</Text> : null}
