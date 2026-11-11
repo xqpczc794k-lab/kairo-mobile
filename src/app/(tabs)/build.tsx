@@ -85,8 +85,13 @@ export default function BuildScreen() {
           stopPoll(); setBusy(false);
           const reply = String(data.reply ?? '');
           const m = reply.match(/https:\/\/github\.com\/[^\s)]+/);
-          setStage(4);
-          setResult({ status: 'done', reply, prUrl: m ? m[0] : undefined });
+          if (m) {
+            setStage(4);
+            setResult({ status: 'done', reply, prUrl: m[0] });
+          } else {
+            setStage(0);
+            setResult({ status: 'error', error: reply || 'Kairo declined to act on this request.' });
+          }
         } else if (data.status === 'error') {
           stopPoll(); setBusy(false);
           setResult({ status: 'error', error: String(data.error ?? 'unknown error') });
@@ -268,7 +273,14 @@ export default function BuildScreen() {
                 style={[styles.prButton, { backgroundColor: '#FF9500', marginTop: 8 }]}
                 onPress={() => {
                   setMode('self_heal');
-                  setDemand(`The previous action failed with this error: ${result.error ?? 'unknown error'}. Please fix the code to prevent this. DO NOT MERGE until the user tests it.`);
+                  const err = result.error ?? 'unknown error';
+                  const lower = err.toLowerCase();
+                  const target = (lower.includes('file fetch') || lower.includes('repo lookup')
+                    || lower.includes('gh api') || lower.includes('external')
+                    || lower.includes('model declined') || lower.includes('dispatch'))
+                    ? 'foundational/engine/external_dispatcher.py'
+                    : 'foundational/engine/bridge_server.py';
+                  setDemand(`The previous action failed with this error: ${err}. Fix the Kairo code in ${target} so this failure is handled/reported clearly. Use list_kairo_repo_files, then call trigger_canonical_dispatch with target_file ${target}. Set no_merge=true; do not merge until the user tests it.`);
                   setResult({ status: 'idle' });
                   setStage(0);
                   setIsFixingError(true);
