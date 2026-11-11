@@ -240,7 +240,7 @@ export default function BuildScreen() {
           {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Dispatch to Engine</Text>}
         </TouchableOpacity>
 
-        {stage > 0 && <StagesTracker stage={stage} />}
+        {stage > 0 && <StagesTracker stage={stage} busy={busy} />}
 
         {result.status !== 'idle' && (
           <View style={styles.resultCard}>
@@ -261,7 +261,7 @@ export default function BuildScreen() {
   );
 }
 
-function StagesTracker({ stage }: { stage: Stage }) {
+function StagesTracker({ stage, busy }: { stage: Stage; busy: boolean }) {
   const items = [
     { id: 1, icon: '⏳', label: 'Q1: Editing code (LLM working)…' },
     { id: 2, icon: '🧪', label: 'Q2: Running tests in sandbox…' },
@@ -277,7 +277,7 @@ function StagesTracker({ stage }: { stage: Stage }) {
           <View key={it.id} style={styles.stageRow}>
             <Text style={[styles.stageIcon, !isActive && !isDone && styles.stageDim]}>{it.icon}</Text>
             <Text style={[styles.stageLabel, isActive && styles.stageActive, isDone && styles.stageDone]}>{it.label}</Text>
-            {isActive ? <ActivityIndicator size="small" color="#007AFF" /> : null}
+            {isActive && busy ? <ActivityIndicator size="small" color="#007AFF" /> : null}
           </View>
         );
       })}
