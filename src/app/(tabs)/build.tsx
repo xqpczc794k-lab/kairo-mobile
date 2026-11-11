@@ -31,7 +31,6 @@ export default function BuildScreen() {
   const [stage, setStage] = useState<Stage>(0);
   const [result, setResult] = useState<DispatchResult>({ status: 'idle' });
   const [busy, setBusy] = useState(false);
-  const [isFixingError, setIsFixingError] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -49,26 +48,26 @@ export default function BuildScreen() {
     return session.access_token;
   };
 
-  const submitCanonical = async (prompt: string, forceNoMerge = false) => {
+  const submitCanonical = async (prompt: string) => {
     setBusy(true); setStage(1); setResult({ status: 'processing' });
     try {
       const jwt = await getJwt();
       const res = await fetch(`${BASE_URL}/api/talk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
-        body: JSON.stringify({ message: prompt, context: {}, no_merge: forceNoMerge }),
+        body: JSON.stringify({ message: prompt, context: {}, no_merge: false }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Dispatch failed');
       if (!data.talk_id) throw new Error('No talk_id returned');
-      pollCanonical(String(data.talk_id), forceNoMerge);
+      pollCanonical(String(data.talk_id));
     } catch (err) {
       setBusy(false);
       setResult({ status: 'error', error: err instanceof Error ? err.message : String(err) });
     }
   };
 
-  const pollCanonical = (talkId: string, forceNoMerge: boolean) => {
+  const pollCanonical = (talkId: string) => {
     let polls = 0; stopPoll();
     pollRef.current = setInterval(async () => {
       polls += 1;
@@ -80,7 +79,7 @@ export default function BuildScreen() {
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (data.demand_id) { pollRegister(String(data.demand_id), forceNoMerge); return; }
+        if (data.demand_id) { pollRegister(String(data.demand_id)); return; }
         if (data.status === 'done') {
           stopPoll(); setBusy(false);
           const reply = String(data.reply ?? '');
@@ -100,7 +99,7 @@ export default function BuildScreen() {
     }, 2000);
   };
 
-  const pollRegister = (demandId: string, forceNoMerge: boolean) => {
+  const pollRegister = (demandId: string) => {
     stopPoll();
     let polls = 0;
     pollRef.current = setInterval(async () => {
@@ -114,11 +113,6 @@ export default function BuildScreen() {
         if (!res.ok) return;
         const data = await res.json();
         if (data.merged_at) { stopPoll(); setBusy(false); setStage(4); setResult({ status: 'done', reply: 'Merged and deployed.', prUrl: data.pr_url }); return; }
-        if (forceNoMerge && data.pr_url && !data.merged_at) {
-          stopPoll(); setBusy(false); setStage(3);
-          setResult({ status: 'pending_review', reply: 'PR opened and held for review. Ready to test.', prUrl: data.pr_url });
-          return;
-        }
         if (data.q3_approved) { setStage(4); setResult({ status: 'processing', prUrl: data.pr_url }); return; }
         if (data.test_passed) { setStage(3); return; }
         if (data.q1_success) { setStage(2); return; }
@@ -190,7 +184,7 @@ export default function BuildScreen() {
     const hint = mode === 'self_heal'
       ? `Self-heal request: ${demand.trim()}\n\nUse list_kairo_repo_files to identify the relevant file, then call trigger_canonical_dispatch.`
       : `Feature request: ${demand.trim()}\n\nUse list_kairo_repo_files to identify the relevant file, then call trigger_canonical_dispatch.`;
-    return submitCanonical(hint, isFixingError);
+    return submitCanonical(hint);
   };
 
   const disabled = busy || (mode === 'external'
@@ -207,7 +201,7 @@ export default function BuildScreen() {
           {(['self_heal', 'external', 'feature'] as Mode[]).map((m) => (
             <TouchableOpacity key={m}
               style={[styles.segment, mode === m && styles.segmentActive]}
-              onPress={() => { if (!busy) { setMode(m); setStage(0); setResult({ status: 'idle' }); setIsFixingError(false); } }}>
+              onPress={() => { if (!busy) { setMode(m); setStage(0); setResult({ status: 'idle' }); } }}>
               <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>
                 {m === 'self_heal' ? 'Self-Heal' : m === 'external' ? 'Fix App' : 'Feature'}
               </Text>
@@ -280,10 +274,9 @@ export default function BuildScreen() {
                     || lower.includes('model declined') || lower.includes('dispatch'))
                     ? 'foundational/engine/external_dispatcher.py'
                     : 'foundational/engine/bridge_server.py';
-                  setDemand(`The previous action failed with this error: ${err}. Fix the Kairo code in ${target} so this failure is handled/reported clearly. Use list_kairo_repo_files, then call trigger_canonical_dispatch with target_file ${target}. Set no_merge=true; do not merge until the user tests it.`);
+                  setDemand(`The previous action failed with this error: ${err}. Fix the Kairo code in ${target} so this failure is handled/reported clearly. Use list_kairo_repo_files, then call trigger_canonical_dispatch with target_file ${target}. Do not set no_merge; if the Docker gate and tests pass, merge automatically so the fix is live for retest.`);
                   setResult({ status: 'idle' });
                   setStage(0);
-                  setIsFixingError(true);
                 }}>
                 <Text style={[styles.prButtonText, { color: '#FFFFFF' }]}>Send Error to Self-Heal</Text>
               </TouchableOpacity>
