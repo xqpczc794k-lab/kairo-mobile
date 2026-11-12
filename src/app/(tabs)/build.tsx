@@ -143,6 +143,11 @@ export default function BuildScreen() {
         });
         if (!res.ok) return;
         const data = await res.json();
+        if (data.error_type) {
+          stopPoll(); setBusy(false); setStage(0);
+          setResult({ status: 'error', error: `Failed (${data.error_type}). Check logs or retry.` });
+          return;
+        }
         if (data.merged_at) { stopPoll(); setBusy(false); setStage(4); setResult({ status: 'done', reply: 'Merged and deployed.', prUrl: data.pr_url }); return; }
         if (data.q3_approved) { setStage(4); setResult({ status: 'processing', prUrl: data.pr_url }); return; }
         if (data.test_passed) { setStage(3); return; }
