@@ -17,6 +17,7 @@ const PROVIDER_OPTIONS = [
   { id: 'openai',     label: 'OpenAI' },
   { id: 'openrouter', label: 'OpenRouter' },
   { id: 'ollama',     label: 'Ollama (local)' },
+  { id: 'gemini',     label: 'Gemini' },
 ] as const;
 
 type Mode = 'self_heal' | 'external' | 'feature';
