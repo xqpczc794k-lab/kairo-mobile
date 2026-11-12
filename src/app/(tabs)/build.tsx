@@ -77,6 +77,7 @@ export default function BuildScreen() {
         body: JSON.stringify(
         (() => {
           const _b: any = { message: prompt, context: {}, no_merge: false };
+          _b.self_heal = mode === 'self_heal';
           if (providerName.trim() && providerKey.trim()) {
             _b.provider_config = {
               provider: providerName.trim(),
