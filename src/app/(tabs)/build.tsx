@@ -9,6 +9,15 @@ import { supabase } from '../../../supabase';
 
 const BASE_URL = 'https://api.kairomtz.com';
 const PAT_KEY = 'kairo.github_pat';
+const PROVIDER_NAME_KEY = 'kairo.provider_name';
+const PROVIDER_KEY = 'kairo.provider_key';
+
+const PROVIDER_OPTIONS = [
+  { id: 'deepseek',   label: 'DeepSeek' },
+  { id: 'openai',     label: 'OpenAI' },
+  { id: 'openrouter', label: 'OpenRouter' },
+  { id: 'ollama',     label: 'Ollama (local)' },
+] as const;
 
 type Mode = 'self_heal' | 'external' | 'feature';
 type Stage = 0 | 1 | 2 | 3 | 4;
@@ -31,11 +40,20 @@ export default function BuildScreen() {
   const [stage, setStage] = useState<Stage>(0);
   const [result, setResult] = useState<DispatchResult>({ status: 'idle' });
   const [busy, setBusy] = useState(false);
+  const [providerName, setProviderName] = useState<string>('');
+  const [providerKey, setProviderKey] = useState<string>('');
+  const [byokOpen, setByokOpen] = useState<boolean>(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     (async () => {
       try { const s = await SecureStore.getItemAsync(PAT_KEY); if (s) setSavedPat(s); } catch {}
+      try {
+        const n = await SecureStore.getItemAsync(PROVIDER_NAME_KEY);
+        const k = await SecureStore.getItemAsync(PROVIDER_KEY);
+        if (n) setProviderName(n);
+        if (k) setProviderKey(k);
+      } catch {}
     })();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
@@ -55,7 +73,18 @@ export default function BuildScreen() {
       const res = await fetch(`${BASE_URL}/api/talk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
-        body: JSON.stringify({ message: prompt, context: {}, no_merge: false }),
+        body: JSON.stringify(
+        (() => {
+          const _b: any = { message: prompt, context: {}, no_merge: false };
+          if (providerName.trim() && providerKey.trim()) {
+            _b.provider_config = {
+              provider: providerName.trim(),
+              api_key:  providerKey.trim(),
+            };
+          }
+          return _b;
+        })()
+      ),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Dispatch failed');
@@ -181,6 +210,16 @@ export default function BuildScreen() {
   const handleSubmit = () => {
     if (busy) return;
     if (mode === 'external') return submitExternal();
+
+    // Persist BYOK if both fields non-empty (best-effort; ignore storage errors)
+    if (providerName.trim() && providerKey.trim()) {
+      (async () => {
+        try {
+          await SecureStore.setItemAsync(PROVIDER_NAME_KEY, providerName.trim());
+          await SecureStore.setItemAsync(PROVIDER_KEY, providerKey.trim());
+        } catch {}
+      })();
+    }
     const hint = mode === 'self_heal'
       ? `Self-heal request: ${demand.trim()}\n\nUse list_kairo_repo_files to identify the relevant file, then call trigger_canonical_dispatch.`
       : `Feature request: ${demand.trim()}\n\nUse list_kairo_repo_files to identify the relevant file, then call trigger_canonical_dispatch.`;
@@ -239,6 +278,72 @@ export default function BuildScreen() {
         <TextInput style={[styles.input, styles.textArea]} value={demand} onChangeText={setDemand}
           placeholder={mode === 'self_heal' ? 'Describe the bug or issue...' : 'Describe the request...'}
           placeholderTextColor="#888" multiline />
+
+        {/* V21.4.B3 — BYOK accordion (advanced) */}
+        <TouchableOpacity
+          onPress={() => setByokOpen(!byokOpen)}
+          style={styles.byokHeader}
+        >
+          <Text style={styles.byokHeaderText}>
+            {byokOpen ? '\u25BC' : '\u25B6'} Advanced: Bring Your Own API Key
+            {providerName && providerKey ? ' (set)' : ''}
+          </Text>
+        </TouchableOpacity>
+
+        {byokOpen && (
+          <View style={styles.byokBody}>
+            <Text style={styles.label}>Provider</Text>
+            <View style={styles.providerRow}>
+              {PROVIDER_OPTIONS.map((p) => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[
+                    styles.providerChip,
+                    providerName === p.id && styles.providerChipActive,
+                  ]}
+                  onPress={() => setProviderName(p.id)}
+                >
+                  <Text
+                    style={[
+                      styles.providerChipText,
+                      providerName === p.id && styles.providerChipTextActive,
+                    ]}
+                  >
+                    {p.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>
+              API Key {providerKey ? '(saved)' : ''}
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={providerKey}
+              onChangeText={setProviderKey}
+              placeholder="sk-..."
+              placeholderTextColor="#888"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await SecureStore.deleteItemAsync(PROVIDER_NAME_KEY);
+                  await SecureStore.deleteItemAsync(PROVIDER_KEY);
+                } catch {}
+                setProviderName('');
+                setProviderKey('');
+              }}
+              style={styles.byokClearButton}
+            >
+              <Text style={styles.byokClearText}>Clear BYOK (use service keys)</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <TouchableOpacity style={[styles.button, disabled && styles.buttonDisabled]}
           onPress={handleSubmit} disabled={disabled}>
@@ -340,4 +445,58 @@ const styles = StyleSheet.create({
   resultText: { color: '#A1A1A6', fontSize: 14, lineHeight: 20 },
   prButton: { marginTop: 16, backgroundColor: '#2C2C2E', padding: 12, borderRadius: 8, alignItems: 'center' },
   prButtonText: { color: '#007AFF', fontWeight: 'bold' },
+  byokHeader: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 8,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  byokHeaderText: {
+    color: '#A1A1A6',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  byokBody: {
+    padding: 16,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  providerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  providerChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  providerChipActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  providerChipText: {
+    color: '#A1A1A6',
+    fontSize: 13,
+  },
+  providerChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  byokClearButton: {
+    marginTop: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  byokClearText: {
+    color: '#FF453A',
+    fontSize: 13,
+  },
 });
