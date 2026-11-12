@@ -31,7 +31,7 @@ interface DispatchResult {
 }
 
 export default function BuildScreen() {
-  const [mode, setMode] = useState<Mode>('self_heal');
+  const [mode, setMode] = useState<Mode>('external');
   const [demand, setDemand] = useState('');
   const [repo, setRepo] = useState('');
   const [filePath, setFilePath] = useState('README.md');
@@ -238,16 +238,34 @@ export default function BuildScreen() {
         <Text style={styles.subtitle}>Trigger autonomous code changes.</Text>
 
         <View style={styles.segmentRow}>
-          {(['self_heal', 'external', 'feature'] as Mode[]).map((m) => (
+          {(['external', 'feature'] as Mode[]).map((m) => (
             <TouchableOpacity key={m}
               style={[styles.segment, mode === m && styles.segmentActive]}
               onPress={() => { if (!busy) { setMode(m); setStage(0); setResult({ status: 'idle' }); } }}>
               <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>
-                {m === 'self_heal' ? 'Self-Heal' : m === 'external' ? 'Fix App' : 'Feature'}
+                {m === 'external' ? 'Fix App' : 'Feature'}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
+
+        {mode === 'self_heal' && (
+          <View style={styles.segmentRow}>
+            <TouchableOpacity
+              style={[styles.segment, styles.segmentActive, { flex: 1 }]}
+              onPress={() => {
+                if (busy) return;
+                setMode('external');
+                setDemand('');
+                setStage(0);
+                setResult({ status: 'idle' });
+              }}>
+              <Text style={[styles.segmentText, styles.segmentTextActive]}>
+                Self-Heal (auto-triggered) — tap to exit
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {mode === 'external' && (
           <>
@@ -271,13 +289,15 @@ export default function BuildScreen() {
           </>
         )}
 
-        <Text style={styles.label}>
-          {mode === 'self_heal' ? "What's bothering you?"
-            : mode === 'feature' ? 'What feature do you want?'
-            : 'What should be fixed?'}
-        </Text>
-        <TextInput style={[styles.input, styles.textArea]} value={demand} onChangeText={setDemand}
-          placeholder={mode === 'self_heal' ? 'Describe the bug or issue...' : 'Describe the request...'}
+        {mode !== 'self_heal' && (
+          <Text style={styles.label}>
+            {mode === 'feature' ? 'What feature do you want?' : 'What should be fixed?'}
+          </Text>
+        )}
+        <TextInput style={[styles.input, styles.textArea, mode === 'self_heal' && styles.inputReadonly]}
+          value={demand} onChangeText={mode === 'self_heal' ? undefined : setDemand}
+          editable={mode !== 'self_heal'}
+          placeholder={mode === 'feature' ? 'Describe the request...' : 'Describe the issue or request...'}
           placeholderTextColor="#888" multiline />
 
         {/* V21.4.B3 — BYOK accordion (advanced) */}
@@ -431,6 +451,7 @@ const styles = StyleSheet.create({
   label: { color: '#A1A1A6', fontSize: 14, marginBottom: 8, fontWeight: '500' },
   input: { backgroundColor: '#1C1C1E', color: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 16, fontSize: 16 },
   textArea: { minHeight: 100, textAlignVertical: 'top' },
+  inputReadonly: { opacity: 0.85, borderWidth: 1, borderColor: '#FF9500' },
   button: { backgroundColor: '#007AFF', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 8 },
   buttonDisabled: { backgroundColor: '#333333' },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
