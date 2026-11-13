@@ -102,7 +102,7 @@ export default function BuildScreen() {
     let polls = 0; stopPoll();
     pollRef.current = setInterval(async () => {
       polls += 1;
-      if (polls > 150) { stopPoll(); setBusy(false); setResult({ status: 'error', error: 'Build timed out.' }); return; }
+      if (polls > 450) { stopPoll(); setBusy(false); setResult({ status: 'error', error: 'Build timed out.' }); return; }
       try {
         const jwt = await getJwt();
         const res = await fetch(`${BASE_URL}/api/talk-status?id=${encodeURIComponent(talkId)}`, {
@@ -135,7 +135,7 @@ export default function BuildScreen() {
     let polls = 0;
     pollRef.current = setInterval(async () => {
       polls += 1;
-      if (polls > 200) { stopPoll(); setBusy(false); setResult({ status: 'error', error: 'Review pending — merge not yet approved. Check the PR.' }); return; }
+      if (polls > 450) { stopPoll(); setBusy(false); setResult({ status: 'error', error: 'Review pending — merge not yet approved. Check the PR.' }); return; }
       try {
         const jwt = await getJwt();
         const res = await fetch(`${BASE_URL}/api/status?id=${encodeURIComponent(demandId)}`, {
@@ -190,7 +190,7 @@ export default function BuildScreen() {
     let polls = 0; stopPoll();
     pollRef.current = setInterval(async () => {
       polls += 1;
-      if (polls > 150) { stopPoll(); setBusy(false); setResult({ status: 'error', error: 'External dispatch timed out.' }); return; }
+      if (polls > 450) { stopPoll(); setBusy(false); setResult({ status: 'error', error: 'External dispatch timed out.' }); return; }
       try {
         const jwt = await getJwt();
         const res = await fetch(`${BASE_URL}/api/external-status?id=${encodeURIComponent(dispatchId)}`, {
