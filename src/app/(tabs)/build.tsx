@@ -30,6 +30,21 @@ interface DispatchResult {
   prUrl?: string;
 }
 
+function _isCapabilityGap(error?: string): boolean {
+  if (!error) return false;
+  const e = error.toLowerCase();
+  return e.includes('404') || e.includes('not found') || e.includes('does not exist')
+    || e.includes("doesn't exist") || e.includes('missing required') || e.includes('file fetch failed');
+}
+
+function _isTerminalAIState(error?: string): boolean {
+  if (!error) return false;
+  const e = error.toLowerCase();
+  return e.includes('investigation exhausted') || e.includes('declined')
+    || e.includes('model declined') || e.includes('build timed out');
+}
+
+
 export default function BuildScreen() {
   const [mode, setMode] = useState<Mode>('external');
   const [demand, setDemand] = useState('');
@@ -400,7 +415,26 @@ export default function BuildScreen() {
                 <Text style={styles.prButtonText}>View Pull Request</Text>
               </TouchableOpacity>
             ) : null}
-            {result.status === 'error' ? (
+            {result.status === 'error' && _isTerminalAIState(result.error) ? (
+              <Text style={[styles.resultText, { color: '#FF9500', fontSize: 13, marginTop: 8 }]}>
+                AI could not resolve this. Try rephrasing the demand or check server logs.
+              </Text>
+            ) : null}
+            {result.status === 'error' && !_isTerminalAIState(result.error) && _isCapabilityGap(result.error) ? (
+              <TouchableOpacity
+                style={[styles.prButton, { backgroundColor: '#FF9500', marginTop: 8 }]}
+                onPress={() => {
+                  const err = result.error ?? 'unknown error';
+                  setMode('feature');
+                  setDemand(`The Fix App dispatch failed with: ${err}.\n\nThe target was ${filePath || '(unknown)'} in ${repo || '(unknown repo)'} on branch ${branch || 'main'}.\n\nThis looks like a MISSING CAPABILITY, not a bug. The external dispatcher cannot handle this case (for example, the file does not exist and needs to be created).\n\nInvestigate foundational/engine/external_dispatcher.py. Add the missing capability so this class of dispatch succeeds. Use list_kairo_repo_files to confirm the file location, then call trigger_canonical_dispatch with target_file. Do not set no_merge; if the Docker gate and tests pass, merge automatically.`);
+                  setOriginalDemand(`Add missing capability to external_dispatcher.py: ${err.slice(0, 80)}`);
+                  setResult({ status: 'idle' });
+                  setStage(0);
+                }}>
+                <Text style={[styles.prButtonText, { color: '#FFFFFF' }]}>Add Missing Capability (via Feature)</Text>
+              </TouchableOpacity>
+            ) : null}
+            {result.status === 'error' && !_isTerminalAIState(result.error) && !_isCapabilityGap(result.error) ? (
               <TouchableOpacity
                 style={[styles.prButton, { backgroundColor: '#FF9500', marginTop: 8 }]}
                 onPress={() => {
