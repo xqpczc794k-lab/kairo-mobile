@@ -440,13 +440,13 @@ export default function BuildScreen() {
                 <Text style={[styles.prButtonText, { color: '#FFFFFF' }]}>Add Missing Capability (via Feature)</Text>
               </TouchableOpacity>
             ) : null}
-            {result.status === 'error' && !_isTerminalAIState(result.error) && !_isCapabilityGap(result.error) ? (
+            {result.status === 'error' && mode !== 'self_heal' && !_isTerminalAIState(result.error) && !_isCapabilityGap(result.error) ? (
               <TouchableOpacity
                 style={[styles.prButton, { backgroundColor: '#FF9500', marginTop: 8 }]}
                 onPress={() => {
                   setMode('self_heal');
                   const err = result.error ?? 'unknown error';
-                  setDemand(`The previous action failed with this error: ${err}.\n\nORIGINAL TASK THAT FAILED:\n${originalDemand || demand}\n\nInvestigate the codebase to identify the file most likely to generate this error. Use list_kairo_repo_files to search, then call trigger_canonical_dispatch with that target_file (do not guess; verify the file exists). Do not set no_merge; if the Docker gate and tests pass, merge automatically so the fix is live for retest.`);
+                  setDemand(`The previous action failed with this error: ${err}.\n\nORIGINAL TASK THAT FAILED:\n${originalDemand}\n\nInvestigate the codebase to identify the file most likely to generate this error. Use list_kairo_repo_files to search, then call trigger_canonical_dispatch with that target_file (do not guess; verify the file exists). Do not set no_merge; if the Docker gate and tests pass, merge automatically so the fix is live for retest.`);
                   setResult({ status: 'idle' });
                   setStage(0);
                 }}>
