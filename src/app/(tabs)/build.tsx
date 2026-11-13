@@ -57,10 +57,29 @@ export default function BuildScreen() {
   const [stage, setStage] = useState<Stage>(0);
   const [result, setResult] = useState<DispatchResult>({ status: 'idle' });
   const [busy, setBusy] = useState(false);
+  const [mtz, setMtz] = useState({ TZ: 0, S: 1, error_count: 0 });
+  const [lifo, setLifo] = useState(0);
   const [providerName, setProviderName] = useState<string>('');
   const [providerKey, setProviderKey] = useState<string>('');
   const [byokOpen, setByokOpen] = useState<boolean>(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const fetchMtz = async () => {
+      try {
+        const jwt = await getJwt();
+        const [resMtz, resLifo] = await Promise.all([
+          fetch(`${BASE_URL}/api/mtz-state`, { headers: { Authorization: `Bearer ${jwt}` } }),
+          fetch(`${BASE_URL}/api/lifo-stats`, { headers: { Authorization: `Bearer ${jwt}` } }),
+        ]);
+        if (resMtz.ok) setMtz(await resMtz.json());
+        if (resLifo.ok) { const d = await resLifo.json(); setLifo(Number(d.count_5min ?? 0)); }
+      } catch {}
+    };
+    fetchMtz();
+    const mtzInterval = setInterval(fetchMtz, 5000);
+    return () => clearInterval(mtzInterval);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -398,6 +417,24 @@ export default function BuildScreen() {
           {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Dispatch to Engine</Text>}
         </TouchableOpacity>
 
+        <View style={styles.vitalsCard}>
+          <Text style={styles.vitalsTitle}>System Vitals</Text>
+          <View style={styles.vitalsRow}>
+            <Text style={styles.vitalsLabel}>Stability (S)</Text>
+            <Text style={[styles.vitalsValue, { color: mtz.S > 0.7 ? '#4CAF50' : mtz.S > 0.3 ? '#FFC107' : '#F44336' }]}>
+              {Number(mtz.S ?? 1).toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.vitalsRow}>
+            <Text style={styles.vitalsLabel}>Router</Text>
+            <Text style={styles.vitalsValue}>{mtz.S < 0.3 ? 'Layer C (Cloud)' : 'Layer B (Local)'}</Text>
+          </View>
+          <View style={styles.vitalsRow}>
+            <Text style={styles.vitalsLabel}>Recent Errors</Text>
+            <Text style={styles.vitalsValue}>{lifo}</Text>
+          </View>
+        </View>
+
         {stage > 0 && <StagesTracker stage={stage} busy={busy} />}
 
         {result.status !== 'idle' && (
@@ -485,6 +522,32 @@ function StagesTracker({ stage, busy }: { stage: Stage; busy: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  vitalsCard: {
+    backgroundColor: '#1c1c1e',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  vitalsTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  vitalsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  vitalsLabel: {
+    color: '#888',
+    fontSize: 14,
+  },
+  vitalsValue: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   container: { flex: 1, backgroundColor: '#121212' },
   content: { padding: 16, paddingBottom: 48 },
   header: { fontSize: 32, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 4 },
