@@ -404,13 +404,7 @@ export default function BuildScreen() {
                 onPress={() => {
                   setMode('self_heal');
                   const err = result.error ?? 'unknown error';
-                  const lower = err.toLowerCase();
-                  const target = (lower.includes('file fetch') || lower.includes('repo lookup')
-                    || lower.includes('gh api') || lower.includes('external')
-                    || lower.includes('model declined') || lower.includes('dispatch'))
-                    ? 'foundational/engine/external_dispatcher.py'
-                    : 'foundational/engine/bridge_server.py';
-                  setDemand(`The previous action failed with this error: ${err}. Fix the Kairo code in ${target} so this failure is handled/reported clearly. Use list_kairo_repo_files, then call trigger_canonical_dispatch with target_file ${target}. Do not set no_merge; if the Docker gate and tests pass, merge automatically so the fix is live for retest.`);
+                  setDemand(`The previous action failed with this error: ${err}. Investigate the codebase to identify the file most likely to generate this error. Use list_kairo_repo_files to search, then call trigger_canonical_dispatch with that target_file (do not guess; verify the file exists). Do not set no_merge; if the Docker gate and tests pass, merge automatically so the fix is live for retest.`);
                   setResult({ status: 'idle' });
                   setStage(0);
                 }}>
