@@ -33,6 +33,7 @@ interface DispatchResult {
 export default function BuildScreen() {
   const [mode, setMode] = useState<Mode>('external');
   const [demand, setDemand] = useState('');
+  const [originalDemand, setOriginalDemand] = useState('');
   const [repo, setRepo] = useState('');
   const [filePath, setFilePath] = useState('README.md');
   const [branch, setBranch] = useState('main');
@@ -216,6 +217,7 @@ export default function BuildScreen() {
 
   const handleSubmit = () => {
     if (busy) return;
+    if (demand.trim() && mode !== 'self_heal') setOriginalDemand(demand.trim());
     if (mode === 'external') return submitExternal();
 
     // Persist BYOK if both fields non-empty (best-effort; ignore storage errors)
@@ -404,7 +406,7 @@ export default function BuildScreen() {
                 onPress={() => {
                   setMode('self_heal');
                   const err = result.error ?? 'unknown error';
-                  setDemand(`The previous action failed with this error: ${err}. Investigate the codebase to identify the file most likely to generate this error. Use list_kairo_repo_files to search, then call trigger_canonical_dispatch with that target_file (do not guess; verify the file exists). Do not set no_merge; if the Docker gate and tests pass, merge automatically so the fix is live for retest.`);
+                  setDemand(`The previous action failed with this error: ${err}.\n\nORIGINAL TASK THAT FAILED:\n${originalDemand || demand}\n\nInvestigate the codebase to identify the file most likely to generate this error. Use list_kairo_repo_files to search, then call trigger_canonical_dispatch with that target_file (do not guess; verify the file exists). Do not set no_merge; if the Docker gate and tests pass, merge automatically so the fix is live for retest.`);
                   setResult({ status: 'idle' });
                   setStage(0);
                 }}>
