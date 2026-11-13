@@ -425,6 +425,12 @@ export default function BuildScreen() {
                 style={[styles.prButton, { backgroundColor: '#FF9500', marginTop: 8 }]}
                 onPress={() => {
                   const err = result.error ?? 'unknown error';
+                  // Capability work must use service keys; a local Ollama model
+                  // as Talk orchestrator times out on these large prompts.
+                  setProviderName('');
+                  setProviderKey('');
+                  SecureStore.deleteItemAsync(PROVIDER_NAME_KEY).catch(() => {});
+                  SecureStore.deleteItemAsync(PROVIDER_KEY).catch(() => {});
                   setMode('feature');
                   setDemand(`The Fix App dispatch failed with: ${err}.\n\nThe target was ${filePath || '(unknown)'} in ${repo || '(unknown repo)'} on branch ${branch || 'main'}.\n\nThis looks like a MISSING CAPABILITY, not a bug. The external dispatcher cannot handle this case (for example, the file does not exist and needs to be created).\n\nInvestigate foundational/engine/external_dispatcher.py. Add the missing capability so this class of dispatch succeeds. Use list_kairo_repo_files to confirm the file location, then call trigger_canonical_dispatch with target_file. Do not set no_merge; if the Docker gate and tests pass, merge automatically.`);
                   setOriginalDemand(`Add missing capability to external_dispatcher.py: ${err.slice(0, 80)}`);
