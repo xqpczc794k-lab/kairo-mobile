@@ -481,13 +481,12 @@ export default function BuildScreen() {
               <TouchableOpacity
                 style={[styles.prButton, { backgroundColor: '#FF9500', marginTop: 8 }]}
                 onPress={() => {
-                  setMode('self_heal');
-                  const err = result.error ?? 'unknown error';
-                  setDemand(`The previous action failed with this error: ${err}.\n\nORIGINAL TASK THAT FAILED:\n${originalDemand}\n\nInvestigate the codebase to identify the file most likely to generate this error. Use list_kairo_repo_files to search, then call trigger_canonical_dispatch with that target_file (do not guess; verify the file exists). Do not set no_merge; if the Docker gate and tests pass, merge automatically so the fix is live for retest.`);
+                  // External failures retry at the external boundary.
+                  // The backend's LIFO injection carries the prior gate error.
                   setResult({ status: 'idle' });
                   setStage(0);
                 }}>
-                <Text style={[styles.prButtonText, { color: '#FFFFFF' }]}>Send Error to Self-Heal</Text>
+                <Text style={[styles.prButtonText, { color: '#FFFFFF' }]}>Retry External Dispatch</Text>
               </TouchableOpacity>
             ) : null}
           </View>
