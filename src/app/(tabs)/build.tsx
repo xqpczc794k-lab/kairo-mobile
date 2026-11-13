@@ -306,7 +306,9 @@ export default function BuildScreen() {
           placeholder={mode === 'feature' ? 'Describe the request...' : 'Describe the issue or request...'}
           placeholderTextColor="#888" multiline />
 
-        {/* V21.4.B3 — BYOK accordion (advanced) */}
+        {/* V21.4.B3 — BYOK accordion (advanced); hidden in Self-Heal (local coder) */}
+        {mode !== 'self_heal' && (
+          <>
         <TouchableOpacity
           onPress={() => setByokOpen(!byokOpen)}
           style={styles.byokHeader}
@@ -370,6 +372,8 @@ export default function BuildScreen() {
               <Text style={styles.byokClearText}>Clear BYOK (use service keys)</Text>
             </TouchableOpacity>
           </View>
+        )}
+          </>
         )}
 
         <TouchableOpacity style={[styles.button, disabled && styles.buttonDisabled]}
