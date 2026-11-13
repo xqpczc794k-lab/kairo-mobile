@@ -440,7 +440,7 @@ export default function BuildScreen() {
                 <Text style={[styles.prButtonText, { color: '#FFFFFF' }]}>Add Missing Capability (via Feature)</Text>
               </TouchableOpacity>
             ) : null}
-            {result.status === 'error' && mode !== 'self_heal' && !_isTerminalAIState(result.error) && !_isCapabilityGap(result.error) ? (
+            {result.status === 'error' && mode === 'external' && !_isTerminalAIState(result.error) && !_isCapabilityGap(result.error) ? (
               <TouchableOpacity
                 style={[styles.prButton, { backgroundColor: '#FF9500', marginTop: 8 }]}
                 onPress={() => {
